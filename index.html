@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>PUBG Mobile: TDM — Ultra Edition</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <div class="hud">
+        <div class="team blue">СИНИЕ <span id="sBlue">0</span></div>
+        <div class="timer">TDM</div>
+        <div class="team red"><span id="sRed">0</span> КРАСНЫЕ</div>
+        <div class="kills-badge">☠️ <span id="kills">0</span></div>
+    </div>
+
+    <div id="menu">
+        <div class="menu-card">
+            <div class="subtitle">ARENA WAREHOUSE</div>
+            <h1>PUBG MOBILE: TDM</h1>
+            <button class="btn-start" onclick="startGame()">В БОЙ</button>
+        </div>
+    </div>
+
+    <div id="joyZone" class="joy-zone"><div id="joyStick" class="joy-stick"></div></div>
+    <button class="fire-btn" onpointerdown="firing = true" onpointerup="firing = false" onpointerleave="firing = false">FIRE</button>
+
+    <canvas id="game"></canvas>
+
+    <script src="script.js"></script>
+</body>
+</html>
+* { box-sizing: border-box; user-select: none; margin: 0; padding: 0; }
+body { background: #090b10; color: #fff; font-family: 'Segoe UI', system-ui, sans-serif; overflow: hidden; height: 100vh; }
+.hud {
+    position: absolute; top: 14px; left: 50%; transform: translateX(-50%);
+    display: flex; align-items: center; background: rgba(12, 16, 24, 0.88);
+    backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,0.7); overflow: hidden; z-index: 10;
+}
+.team { padding: 8px 18px; font-weight: 800; font-size: 16px; display: flex; align-items: center; gap: 10px; }
+.team.blue { background: linear-gradient(90deg, rgba(14,165,233,0.25), transparent); color: #38bdf8; }
+.team.red { background: linear-gradient(-90deg, rgba(239,68,68,0.25), transparent); color: #f87171; }
+.team span { font-size: 22px; color: #fff; }
+.timer { padding: 0 12px; font-size: 12px; font-weight: 900; color: #94a3b8; letter-spacing: 1px; }
+.kills-badge { background: rgba(251,191,36,0.15); color: #fbbf24; padding: 10px 14px; font-weight: 800; font-size: 14px; border-left: 1px solid rgba(255,255,255,0.1); }
+
+#menu {
+    position: absolute; inset: 0; background: radial-gradient(circle at center, rgba(18,24,38,0.85) 0%, #07090d 100%);
+    backdrop-filter: blur(6px); display: flex; justify-content: center; align-items: center; z-index: 20;
+}
+.menu-card {
+    text-align: center; padding: 40px 30px; background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(251,191,36,0.3); border-radius: 20px; box-shadow: 0 20px 50px rgba(0,0,0,0.8);
+    width: 90%; max-width: 400px;
+}
+.subtitle { color: #94a3b8; font-size: 12px; letter-spacing: 4px; margin-bottom: 8px; font-weight: 700; }
+h1 { font-size: 28px; margin-bottom: 30px; background: linear-gradient(180deg, #fff 0%, #fbbf24 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+.btn-start {
+    background: linear-gradient(180deg, #fbbf24 0%, #d97706 100%); color: #0f172a; border: none;
+    padding: 16px 55px; font-size: 18px; font-weight: 900; border-radius: 10px; cursor: pointer;
+    box-shadow: 0 0 30px rgba(251, 191, 36, 0.45);
+}
+.btn-start:active { transform: scale(0.95); }
+canvas { display: block; width: 100%; height: 100%; cursor: crosshair; }
+
+.joy-zone {
+    position: absolute; bottom: 25px; left: 25px; width: 110px; height: 110px; border-radius: 50%;
+    background: rgba(255,255,255,0.06); border: 2px solid rgba(255,255,255,0.15); z-index: 10; touch-action: none;
+}
+.joy-stick {
+    position: absolute; top: 35px; left: 35px; width: 40px; height: 40px; border-radius: 50%;
+    background: rgba(56, 189, 248, 0.7); box-shadow: 0 0 15px rgba(56,189,248,0.5); pointer-events: none;
+}
+.fire-btn {
+    position: absolute; bottom: 35px; right: 35px; width: 80px; height: 80px; border-radius: 50%;
+    background: radial-gradient(circle, #ef4444, #991b1b); border: 3px solid rgba(255,255,255,0.35);
+    color: #fff; font-weight: 900; font-size: 15px; box-shadow: 0 0 25px rgba(239, 68, 68, 0.6);
+    z-index: 10; touch-action: manipulation;
+}
+.fire-btn:active { transform: scale(0.9); }
+const c = document.getElementById('game'), ctx = c.getContext('2d');
+let W, H, run = 0, sh = 0, sB = 0, sR = 0, kl = 0, fire = 0;
+let obs = [], enm = [], bul = [], prt = [], dcl = [], joy = { x: 0, y: 0 }, k = {};
+const p = { x: 80, y: 300, r: 16, a: 0, hp: 100, sp: 4.2, cd: 0 };
+
+const rsz = () => { W = c.width = innerWidth; H = c.height = innerHeight; if (run) map(); };
+addEventListener('resize', rsz); rsz();
+
+function map() {
+    obs = [
+        { x: W * .45, y: H * .4, w: W * .1, h: H * .2, t: 0 },
+        { x: W * .22, y: H * .18, w: 95, h: 48, t: 1 }, { x: W * .22, y: H * .72, w: 95, h: 48, t: 1 },
+        { x: W * .7, y: H * .18, w: 95, h: 48, t: 2 }, { x: W * .7, y: H * .72, w: 95, h: 48, t: 2 },
+        { x: W * .35, y: H * .46, w: 42, h: 42, t: 3 }, { x: W * .61, y: H * .46, w: 42, h: 42, t: 3 }
+    ];
+}
+
+function hitWall(e, isB) {
+    for (let o of obs) {
+        if (isB) { if (e.x > o.x && e.x < o.x + o.w && e.y > o.y && e.y < o.y + o.h) return 1; }
+        else {
+            let cx = Math.max(o.x, Math.min(e.x, o.x + o.w)), cy = Math.max(o.y, Math.min(e.y, o.y + o.h));
+            let dx = e.x - cx, dy = e.y - cy, d = Math.hypot(dx, dy);
+            if (d < e.r) {
+                let ov = e.r - d;
+                if (!d) e.x += ov; else { e.x += (dx / d) * ov; e.y += (dy / d) * ov; }
+            }
+        }
+    }
+}
+
+addEventListener('keydown', e => k[e.code] = 1);
+addEventListener('keyup', e => k[e.code] = 0);
+addEventListener('mousemove', e => p.a = Math.atan2(e.clientY - p.y, e.clientX - p.x));
+c.addEventListener('pointerdown', e => { p.a = Math.atan2(e.clientY - p.y, e.clientX - p.x); fire = 1; });
+addEventListener('pointerup', () => fire = 0);
+
+const jZ = document.getElementById('joyZone'), jS = document.getElementById('joyStick');
+jZ.addEventListener('pointermove', e => {
+    if (!e.buttons && e.pointerType === 'mouse') return;
+    let r = jZ.getBoundingClientRect(), dx = e.clientX - r.left - 55, dy = e.clientY - r.top - 55;
+    let d = Math.min(35, Math.hypot(dx, dy)), a = Math.atan2(dy, dx);
+    jS.style.transform = `translate(${Math.cos(a) * d}px,${Math.sin(a) * d}px)`;
+    joy = { x: Math.cos(a) * (d / 35), y: Math.sin(a) * (d / 35) };
+    if (d > 5) p.a = a;
+});
+jZ.addEventListener('pointerup', () => { jS.style.transform = ''; joy = { x: 0, y: 0 }; });
+
+function startGame() {
+    document.getElementById('menu').style.display = 'none';
+    run = 1; map(); p.x = 70; p.y = H / 2; p.hp = 100; enm = [];
+    for (let i = 0; i < 4; i++) enm.push({ x: W - 70, y: 80 + Math.random() * (H - 160), r: 16, a: Math.PI, hp: 100, cd: 60 });
+    loop();
+}
+
+const pt = (x, y, cl, n, sp = 6) => { while (n--) prt.push({ x, y, vx: (Math.random() - .5) * sp, vy: (Math.random() - .5) * sp, l: 20, cl }); };
+
+function shoot(s, tm) {
+    let a = s.a + (Math.random() - .5) * .08, mx = s.x + Math.cos(a) * 26, my = s.y + Math.sin(a) * 26;
+    bul.push({ x: mx, y: my, vx: Math.cos(a) * 16, vy: Math.sin(a) * 16, tm });
+    pt(mx, my, '#fbbf24', 4, 4);
+    if (tm) sh = 3;
+}
+
+function upd() {
+    let mx = joy.x || (k.KeyD || k.ArrowRight ? 1 : k.KeyA || k.ArrowLeft ? -1 : 0);
+    let my = joy.y || (k.KeyS || k.ArrowDown ? 1 : k.KeyW || k.ArrowUp ? -1 : 0);
+    p.x = Math.max(20, Math.min(W - 20, p.x + mx * p.sp));
+    p.y = Math.max(20, Math.min(H - 20, p.y + my * p.sp));
+    hitWall(p);
+
+    if (p.cd > 0) p.cd--;
+    if ((fire || window.firing) && p.cd <= 0) { shoot(p, 1); p.cd = 9; }
+
+    for (let i = bul.length - 1; i >= 0; i--) {
+        let b = bul[i]; b.x += b.vx; b.y += b.vy;
+        if (b.x < 0 || b.x > W || b.y < 0 || b.y > H || hitWall(b, 1)) { pt(b.x, b.y, '#cbd5e1', 5, 5); bul.splice(i, 1); continue; }
+        if (b.tm) {
+            for (let j = enm.length - 1; j >= 0; j--) {
+                let e = enm[j];
+                if (Math.hypot(b.x - e.x, b.y - e.y) < e.r + 4) {
+                    e.hp -= 28; pt(b.x, b.y, '#ef4444', 8); bul.splice(i, 1);
+                    if (e.hp <= 0) {
+                        dcl.push({ x: e.x, y: e.y, cl: 'rgba(220,38,38,.35)' }); pt(e.x, e.y, '#ef4444', 20, 8);
+                        enm.splice(j, 1); document.getElementById('sBlue').innerText = ++sB; document.getElementById('kills').innerText = ++kl;
+                        enm.push({ x: W - 70, y: 80 + Math.random() * (H - 160), r: 16, a: Math.PI, hp: 100, cd: 60 });
+                    }
+                    break;
+                }
+            }
+        } else if (Math.hypot(b.x - p.x, b.y - p.y) < p.r + 4) {
+            p.hp -= 12; pt(b.x, b.y, '#38bdf8', 8); bul.splice(i, 1);
+            if (p.hp <= 0) {
+                dcl.push({ x: p.x, y: p.y, cl: 'rgba(14,165,233,.35)' });
+                document.getElementById('sRed').innerText = ++sR; p.x = 70; p.y = H / 2; p.hp = 100;
+            }
+        }
+    }
+
+    enm.forEach(e => {
+        e.a = Math.atan2(p.y - e.y, p.x - e.x); e.x += Math.cos(e.a) * 1.8; e.y += Math.sin(e.a) * 1.8; hitWall(e);
+        if (--e.cd <= 0) { e.cd = 70 + Math.random() * 40; shoot(e, 0); }
+    });
+
+    for (let i = prt.length - 1; i >= 0; i--) { let q = prt[i]; q.x += q.vx; q.y += q.vy; if (--q.l <= 0) prt.splice(i, 1); }
+    if (sh > 0) sh *= .8;
+}
+
+function man(s, pl) {
+    ctx.save(); ctx.translate(s.x, s.y);
+    if (s.hp < 100) { ctx.fillStyle = '#0008'; ctx.fillRect(-18, -28, 36, 5); ctx.fillStyle = pl ? '#38bdf8' : '#ef4444'; ctx.fillRect(-18, -28, .36 * s.hp, 5); }
+    ctx.rotate(s.a);
+    ctx.fillStyle = '#0006'; ctx.beginPath(); ctx.arc(3, 4, s.r, 0, 7); ctx.fill();
+    ctx.fillStyle = pl ? '#0284c7' : '#dc2626'; ctx.beginPath(); ctx.roundRect(-8, -17, 16, 34, 6); ctx.fill();
+    ctx.fillStyle = '#1e293b'; ctx.fillRect(4, 4, 24, 5);
+    ctx.fillStyle = pl ? '#0ea5e9' : '#ef4444'; ctx.beginPath(); ctx.arc(0, 0, 11, 0, 7); ctx.fill(); ctx.strokeStyle = '#fff'; ctx.stroke();
+    ctx.fillStyle = '#0f172a'; ctx.fillRect(5, -6, 5, 12); ctx.restore();
+}
+
+function drw() {
+    ctx.save(); if (sh > .2) ctx.translate((Math.random() - .5) * sh * 2, (Math.random() - .5) * sh * 2);
+    ctx.fillStyle = '#111622'; ctx.fillRect(0, 0, W, H); ctx.strokeStyle = '#fff1';
+    for (let x = 0; x < W; x += 50) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
+    for (let y = 0; y < H; y += 50) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+
+    dcl.forEach(d => { ctx.fillStyle = d.cl; ctx.beginPath(); ctx.arc(d.x, d.y, 18, 0, 7); ctx.fill(); });
+    obs.forEach(o => {
+        ctx.fillStyle = '#0008'; ctx.fillRect(o.x + 8, o.y + 10, o.w, o.h);
+        ctx.fillStyle = ['#334155', '#1d4ed8', '#b91c1c', '#78350f'][o.t]; ctx.fillRect(o.x, o.y, o.w, o.h);
+        ctx.strokeStyle = ['#64748b', '#3b82f6', '#ef4444', '#b45309'][o.t]; ctx.lineWidth = 2; ctx.strokeRect(o.x, o.y, o.w, o.h);
+    });
+
+    bul.forEach(b => {
+        ctx.beginPath(); ctx.moveTo(b.x, b.y); ctx.lineTo(b.x - b.vx * 2, b.y - b.vy * 2);
+        ctx.strokeStyle = b.tm ? '#fde047' : '#fb7185'; ctx.lineWidth = 3; ctx.stroke();
+    });
+
+    man(p, 1); enm.forEach(e => man(e, 0));
+    prt.forEach(q => { ctx.globalAlpha = q.l / 20; ctx.fillStyle = q.cl; ctx.fillRect(q.x, q.y, 4, 4); });
+    ctx.restore();
+}
+
+function loop() { if (run) { upd(); drw(); requestAnimationFrame(loop); } }
